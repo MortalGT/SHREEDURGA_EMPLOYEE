@@ -1,0 +1,227 @@
+{
+  "main": {
+    "id": "93e5c83499dc715e",
+    "type": "split",
+    "children": [
+      {
+        "id": "5a5395112e67e1c4",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "e6c3e209c7673bc2",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "POCS/Engineering - SOW v5.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Engineering - SOW v5"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "d7e390e20a6fa066",
+    "type": "split",
+    "children": [
+      {
+        "id": "94b77c5172c2b003",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4a63031140c44d51",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "1c696f6b6a5c7907",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "1fa7ae20e352c68e",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 200
+  },
+  "right": {
+    "id": "146cff652312cdcc",
+    "type": "split",
+    "children": [
+      {
+        "id": "f27adedf33fa43c9",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "380b010157afd8ee",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "JIWARJIKA ASRS Effort Estimation.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for JIWARJIKA ASRS Effort Estimation"
+            }
+          },
+          {
+            "id": "d422f1b64d0d010e",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "JIWARJIKA ASRS Effort Estimation.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from JIWARJIKA ASRS Effort Estimation"
+            }
+          },
+          {
+            "id": "5e7415994d877b35",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "57e0405c7891a4ce",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "9504e6a627f6acb9",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "JIWARJIKA ASRS Effort Estimation.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of JIWARJIKA ASRS Effort Estimation"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "e6c3e209c7673bc2",
+  "lastOpenFiles": [
+    "POCS/Elixrr_ASRS_Technical_Specification.md",
+    "Baramati_Agro_Project_Timeline.md",
+    "JIWARJIKA ASRS Effort Estimation.md",
+    "ABAP_APP/package-lock.json",
+    "ABAP_APP/node_modules/lucide-react/dist/lucide-react.suffixed.d.ts",
+    "ABAP_APP/node_modules/lucide-react/dist/lucide-react.prefixed.d.ts",
+    "ABAP_APP/node_modules/lucide-react/dist/lucide-react.d.ts",
+    "ABAP_APP/node_modules/lucide-react/dynamicIconImports.d.ts",
+    "ABAP_APP/node_modules/lucide-react/dynamic.d.ts",
+    "ABAP_APP/node_modules/lucide-react/dist/esm/icons/x-octagon.js.map",
+    "ABAP_APP/node_modules/lucide-react/dist/esm/icons/x-circle.js.map",
+    "ABAP_APP/node_modules/lucide-react/dist/esm/icons/wrench.js.map",
+    "ABAP_APP/node_modules/lucide-react/dist/esm/icons/wrap-text.js.map",
+    "ABAP_APP/node_modules/word-wrap/README.md",
+    "ABAP_APP/node_modules/yocto-queue/readme.md",
+    "ABAP_APP/node_modules/yallist/README.md",
+    "ABAP_APP/node_modules/json-schema-traverse/README.md",
+    "ABAP_APP/node_modules/json5/README.md",
+    "ABAP_APP/node_modules/json5/LICENSE.md",
+    "ABAP_APP/node_modules/hermes-parser/README.md",
+    "ABAP_APP/node_modules/esquery/README.md",
+    "ABAP_APP/node_modules/@babel/code-frame/README.md",
+    "ABAP_APP/node_modules/vite/README.md",
+    "ABAP_APP/node_modules/vite/LICENSE.md",
+    "ABAP_APP/node_modules/@babel/core/README.md",
+    "ABAP_APP/node_modules/@eslint/eslintrc/node_modules/globals/readme.md",
+    "ABAP_APP/node_modules/@eslint/eslintrc/README.md",
+    "ABAP_APP/node_modules/@babel/traverse/README.md",
+    "ABAP_APP/node_modules/flat-cache/README.md",
+    "ABAP_APP/node_modules/flat-cache/changelog.md",
+    "ABAP_APP/node_modules/node-releases/README.md",
+    "ABAP_APP/node_modules/browserslist/README.md",
+    "ABAP_APP/node_modules/baseline-browser-mapping/README.md",
+    "ABAP_APP/node_modules/@humanfs/node/README.md",
+    "ABAP_APP/node_modules/electron-to-chromium/README.md",
+    "ABAP_APP/node_modules/caniuse-lite/README.md",
+    "ABAP_APP/src/assets/react.svg",
+    "ABAP_APP/public/vite.svg"
+  ]
+}

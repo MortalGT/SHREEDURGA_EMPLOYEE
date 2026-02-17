@@ -1,0 +1,61 @@
+managed implementation in class zbp_i_rap_po_head unique;
+strict ( 2 );
+
+define behavior for ZI_RAP_PO_Head alias Header
+persistent table zrap_po_head
+lock master
+authorization master ( instance )
+//etag master <field_name>
+{
+  create;
+  update;
+  delete;
+  association _Item { create; }
+
+  field ( numbering : managed, readonly ) PoUuid;
+  field ( readonly ) CreatedBy, CreatedAt, LastChangedBy, LastChangedAt, LocalLastChangedAt;
+
+  mapping for zrap_po_head
+  {
+    PoUuid = po_uuid;
+    PoId = po_id;
+    Org = org;
+    Status = status;
+    CreatedBy = created_by;
+    CreatedAt = created_at;
+    LastChangedBy = last_changed_by;
+    LastChangedAt = last_changed_at;
+    LocalLastChangedAt = local_last_changed_at;
+  }
+}
+
+define behavior for ZI_RAP_PO_Item alias Item
+persistent table zrap_po_item
+lock dependent by _Header
+authorization dependent by _Header
+//etag master <field_name>
+{
+  update;
+  delete;
+  association _Header;
+
+  field ( numbering : managed, readonly ) ItemUuid;
+  field ( readonly ) PoUuid, CreatedBy, CreatedAt, LastChangedBy, LastChangedAt, LocalLastChangedAt;
+
+  mapping for zrap_po_item
+  {
+    ItemUuid = item_uuid;
+    PoUuid = po_uuid;
+    ItemId = item_id;
+    Material = material;
+    Quantity = quantity;
+    Unit = unit;
+    Price = price;
+    Currency = currency;
+    CreatedBy = created_by;
+    CreatedAt = created_at;
+    LastChangedBy = last_changed_by;
+    LastChangedAt = last_changed_at;
+    LocalLastChangedAt = local_last_changed_at;
+  }
+}

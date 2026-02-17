@@ -1,0 +1,37 @@
+<mvc:View xmlns:mvc="sap.ui.core.mvc" xmlns="sap.m" controllerName="mickey.controller.Main"
+    xmlns:f="sap.ui.layout.form"
+    xmlns:core="sap.ui.core">
+
+    <f:SimpleForm id="SimpleForm" editable="true" layout="ResponsiveGridLayout" 
+        labelSpanL="3" labelSpanM="3" emptySpanL="0" emptySpanM="0" 
+        columnsL="1" columnsM="1" adjustLabelSpan="false">
+        
+        <f:toolbar>
+            <Toolbar>
+                <Title text="Employee Details" level="H2" />
+            </Toolbar>
+        </f:toolbar>
+
+        <f:content>
+            <Label text="Employee ID" />
+            <Input id="empIdInput" placeholder="Enter Employee ID" />
+
+            <Label text="First Name" />
+            <Input id="firstNameInput" placeholder="Enter First Name" />
+
+            <Label text="Last Name" />
+            <Input id="lastNameInput" placeholder="Enter Last Name" />
+
+            <Label text="Email" />
+            <Input id="emailInput" placeholder="Enter Email" type="Email" />
+
+            <Label text="Department" />
+            <Input id="deptInput" placeholder="Enter Department" />
+
+            <Label text="Joining Date" />
+            <DatePicker id="joinDateInput" placeholder="Select Date"DisplayFormat="yyyy-MM-dd" ValueFormat="yyyy-MM-dd" />
+
+            <Button text="Submit" press=".onSubmit" />
+        </f:content>
+    </f:SimpleForm>
+</mvc:View>

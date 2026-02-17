@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Download Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --text-color: #ffffff;
+            --accent-color: #00d2ff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f0c29;
+            background: linear-gradient(to right, #24243e, #302b63, #0f0c29);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            padding: 2rem;
+        }
+
+        /* Glassmorphism Card */
+        .content-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 3rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            margin-bottom: 2rem;
+            transition: transform 0.3s ease;
+        }
+
+        .content-card:hover {
+            transform: translateY(-5px);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.8;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 1rem;
+        }
+
+        .document-body {
+            line-height: 1.6;
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .document-body h2 {
+            margin-top: 2rem;
+            color: var(--accent-color);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            background: var(--primary-gradient);
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(118, 75, 162, 0.4);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        /* SVG Icons */
+        .icon {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        /* Loading Overlay */
+        #loader {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent-color);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <!-- Content to be converted to PDF -->
+        <div id="pdf-content" class="content-card">
+            <h1>Project Scope: Engineering</h1>
+            <div class="subtitle">Statement of Work v4.0 | Date: 2026-01-22</div>
+
+            <div class="document-body">
+                <p>This document outlines the functional requirements for the new digital platform integration between
+                    Baramati Agro's franchise network and the SAP ECC6 backend.</p>
+
+                <h2>Key Objectives</h2>
+                <ul>
+                    <li>Digitise franchise and owned-store operations.</li>
+                    <li>Ensure accurate inventory tracking in SAP.</li>
+                    <li>Automate billing and payment workflows.</li>
+                </ul>
+
+                <h2>Scope of Work</h2>
+                <p>The solution will cover Primary Billing (Franchise to Company) and Secondary Billing (Franchise to
+                    Customer), including robust handling of various material types and payment methods.</p>
+
+                <div style="margin-top: 2rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                    <strong>Note:</strong> This is a generated document for demonstration purposes.
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="download-btn" class="btn" onclick="generatePDF()">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+                </svg>
+                Download PDF
+            </button>
+        </div>
+    </div>
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <div style="margin-top: 1rem;">Generating PDF...</div>
+    </div>
+
+    <script>
+        function generatePDF() {
+            const element = document.getElementById('pdf-content');
+            const button = document.getElementById('download-btn');
+            const loader = document.getElementById('loader');
+
+            // Show loader
+            loader.style.display = 'flex';
+
+            const opt = {
+                margin: 10,
+                filename: 'Engineering_SOW_v4.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            // Generate PDF
+            html2pdf().set(opt).from(element).save().then(() => {
+                // Hide loader after a short delay
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                }, 500);
+            }).catch(err => {
+                console.error("PDF generation failed:", err);
+                alert("Sorry, something went wrong while creating the PDF.");
+                loader.style.display = 'none';
+            });
+        }
+    </script>
+</body>
+
+</html>

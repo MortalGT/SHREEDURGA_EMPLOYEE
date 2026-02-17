@@ -1,0 +1,98 @@
+CLASS zcl_invoice_run_class DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
+ 
+  PUBLIC SECTION.
+    INTERFACES if_oo_adt_classrun .
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+ENDCLASS.
+ 
+ 
+ 
+CLASS zcl_invoice_run_class IMPLEMENTATION.
+ 
+  METHOD if_oo_adt_classrun~main.
+    MODIFY ENTITIES OF I_BillingDocumentTP
+  ENTITY BillingDocument
+  EXECUTE CreateFromSDDocument
+  AUTO FILL CID
+  WITH VALUE #(
+    (
+      %param = VALUE #(
+        _reference = VALUE #(
+          (
+            SDDocument      = '0000000283'
+            SDDocumentCategory  = 'C'
+            %control = VALUE #(
+              SDDocument     = if_abap_behv=>mk-on
+               SDDocumentCategory  = if_abap_behv=>mk-on
+            )
+ 
+             _item = VALUE #( (
+                SDDocumentItem = '00020'
+                %control = VALUE #(
+                 sddocumentitem = if_abap_behv=>mk-on
+ 
+                 )
+              )
+             )
+ 
+          )
+ 
+            (
+            SDDocument      = '0080000207'
+            SDDocumentCategory  = 'J'
+            %control = VALUE #(
+              SDDocument     = if_abap_behv=>mk-on
+               SDDocumentCategory  = if_abap_behv=>mk-on
+            )
+ 
+              _item = VALUE #( (
+                SDDocumentItem = '00010'
+                %control = VALUE #(
+                 sddocumentitem = if_abap_behv=>mk-on
+ 
+                 )
+              )
+             )
+          )
+        )
+        %control = VALUE #( _reference = if_abap_behv=>mk-on )
+      )
+    )
+  )
+  RESULT   DATA(lt_result_modify)
+  FAILED   DATA(ls_failed_modify)
+  REPORTED DATA(ls_reported_modify).
+ 
+ 
+ 
+    IF ls_failed_modify IS NOT INITIAL.
+      " Output errors
+      LOOP AT ls_reported_modify-billingdocument ASSIGNING FIELD-SYMBOL(<ls_rep_so>).
+        out->write( <ls_rep_so>-%msg->if_message~get_text( ) ).
+      ENDLOOP.
+      LOOP AT ls_reported_modify-billingdocumentitem ASSIGNING FIELD-SYMBOL(<ls_rep_item>).
+        out->write( <ls_rep_item>-%msg->if_message~get_text( ) ).
+      ENDLOOP.
+    ELSE.
+      COMMIT ENTITIES RESPONSE OF I_BillingDocumentTP
+        FAILED DATA(ls_commit_failed)
+        REPORTED DATA(ls_commit_reported).
+ 
+      IF ls_commit_failed IS INITIAL.
+        out->write( 'Billing Document Created Successfully.' ).
+        LOOP AT ls_commit_reported-billingdocument INTO DATA(ls_so_map).
+          out->write( |Billing Document ID: { ls_so_map-BillingDocument }| ).
+        ENDLOOP.
+      ELSE.
+        out->write( 'Commit Failed.' ).
+        LOOP AT ls_commit_reported-billingdocument INTO DATA(ls_crep).
+          out->write( ls_crep-%msg->if_message~get_text( ) ).
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.

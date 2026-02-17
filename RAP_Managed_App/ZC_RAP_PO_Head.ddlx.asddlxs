@@ -1,0 +1,39 @@
+@Metadata.layer: #CORE
+@UI: {
+  headerInfo: {
+    typeName: 'Purchase Order',
+    typeNamePlural: 'Purchase Orders',
+    title: { type: #STANDARD, label: 'Purchase Order', value: 'PoId' }
+  }
+}
+annotate view ZC_RAP_PO_Head with
+{
+  @UI.facet: [ { id:              'Header',
+                 purpose:         #STANDARD,
+                 type:            #IDENTIFICATION_REFERENCE,
+                 label:           'Order',
+                 position:        10 },
+               { id:              'Items',
+                 purpose:         #STANDARD,
+                 type:            #LINEITEM_REFERENCE,
+                 label:           'Items',
+                 position:        20,
+                 targetElement:   '_Item'} ]
+
+  @UI: { lineItem:       [ { position: 10, label: 'PO ID' } ],
+         identification: [ { position: 10, label: 'PO ID' } ],
+         selectionField: [ { position: 10 } ] }
+  PoId;
+
+  @UI: { lineItem:       [ { position: 20, label: 'Organization' } ],
+         identification: [ { position: 20, label: 'Organization' } ],
+         selectionField: [ { position: 20 } ] }
+  Org;
+
+  @UI: { lineItem:       [ { position: 30, label: 'Status' } ],
+         identification: [ { position: 30, label: 'Status' } ] }
+  Status;
+
+  @UI.hidden: true
+  PoUuid;
+}

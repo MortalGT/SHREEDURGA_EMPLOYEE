@@ -1,0 +1,1691 @@
+ 
+
+ 
+
+Asrs main 
+
+
+*&---------------------------------------------------------------------*
+ *& Include          ZASRS_MPP_F01
+ *&---------------------------------------------------------------------*
+ *&---------------------------------------------------------------------*
+ *& Module STATUS_1000 OUTPUT
+ *&---------------------------------------------------------------------*
+ *&
+ *&---------------------------------------------------------------------*
+ MODULE status_1000 OUTPUT.
+   SET PF-STATUS 'ZASRS_PF'.
+   SET TITLEBAR 'ASRS'.
+ 
+  PERFORM image.
+ ENDMODULE.
+ *&---------------------------------------------------------------------*
+ *&      Module  USER_COMMAND_1000  INPUT
+ *&---------------------------------------------------------------------*
+ *       text
+ *----------------------------------------------------------------------*
+ MODULE user_command_1000 INPUT.
+   CASE sy-ucomm.
+     WHEN '&F03'.
+       LEAVE PROGRAM.
+     WHEN '&F15'.
+       LEAVE PROGRAM.
+     WHEN 'SKU'.
+       SUBMIT zasrs_sku_master_upload VIA SELECTION-SCREEN AND RETURN.
+     WHEN 'PALLET'.
+       SUBMIT zasrs_pallet_master_upload VIA SELECTION-SCREEN AND RETURN.
+     WHEN 'TRANS'.
+       SUBMIT zasrs_inbound_transactn_upload VIA SELECTION-SCREEN AND RETURN.
+     WHEN 'OUT'.
+       SUBMIT zasrs_outbound_transactn_upl VIA SELECTION-SCREEN AND RETURN.
+     WHEN 'CONF'.
+       SUBMIT zasrs_report VIA SELECTION-SCREEN AND RETURN.
+   ENDCASE.
+ ENDMODULE.
+ *&---------------------------------------------------------------------*
+ *& Form upload_excel
+ *&---------------------------------------------------------------------*
+ *& text
+ *&---------------------------------------------------------------------*
+ *& -->  p1        text
+ *& <--  p2        text
+ *&---------------------------------------------------------------------*
+ FORM upload_excel .
+ 
+  SUBMIT zasrs_mpp_upload VIA SELECTION-SCREEN AND RETURN.
+ 
+ENDFORM.
+ *&---------------------------------------------------------------------*
+ *& Form IMAGE
+ *&---------------------------------------------------------------------*
+ *& text
+ *&---------------------------------------------------------------------*
+ *& -->  p1        text
+ *& <--  p2        text
+ *&---------------------------------------------------------------------*
+ FORM image .
+   DATA: w_lines TYPE i.
+   TYPES pict_line(256) TYPE c.
+   DATA :
+     container TYPE REF TO cl_gui_custom_container,
+     editor    TYPE REF TO cl_gui_textedit,
+     picture   TYPE REF TO cl_gui_picture,
+     pict_tab  TYPE TABLE OF pict_line,
+     url(255)  TYPE c.
+   DATA: graphic_url(255).
+   DATA: BEGIN OF graphic_table OCCURS 0,
+           line(255) TYPE x,
+         END OF graphic_table.
+   DATA: l_graphic_conv TYPE i.
+   DATA: l_graphic_offs TYPE i.
+   DATA: graphic_size TYPE i.
+   DATA: l_graphic_xstr TYPE xstring.
+   .
+   CALL METHOD cl_gui_cfw=>flush.
+   CREATE OBJECT:
+   container EXPORTING container_name = 'CUST_CONTROL',
+   picture EXPORTING parent = container.
+   CALL METHOD cl_ssf_xsf_utilities=>get_bds_graphic_as_bmp
+     EXPORTING
+       p_object = 'GRAPHICS'
+       p_name   = 'ZASRS'
+       p_id     = 'BMAP'
+       p_btype  = 'BCOL'
+     RECEIVING
+       p_bmp    = l_graphic_xstr
+ *  EXCEPTIONS
+ *     NOT_FOUND      = 1
+ *     INTERNAL_ERROR = 2
+ *     others   = 3
+     .
+   IF sy-subrc <> 0.
+ * MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+ *            WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+   ENDIF.
+   graphic_size = xstrlen( l_graphic_xstr ).
+   l_graphic_conv = graphic_size.
+   l_graphic_offs = 0.
+   WHILE l_graphic_conv > 255.
+     graphic_table-line = l_graphic_xstr+l_graphic_offs(255).
+     APPEND graphic_table.
+     l_graphic_offs = l_graphic_offs + 255.
+     l_graphic_conv = l_graphic_conv - 255.
+   ENDWHILE.
+   graphic_table-line = l_graphic_xstr+l_graphic_offs(l_graphic_conv).
+   APPEND graphic_table.
+   CALL FUNCTION 'DP_CREATE_URL'
+     EXPORTING
+       type     = 'IMAGE'
+       subtype  = 'X-UNKNOWN'
+       size     = graphic_size
+       lifetime = 'T'
+     TABLES
+       data     = graphic_table
+     CHANGING
+       url      = url.
+   CALL METHOD picture->load_picture_from_url
+     EXPORTING
+       url = url.
+   CALL METHOD picture->set_display_mode
+     EXPORTING
+       display_mode = picture->display_mode_fit_center.
+ ENDFORM.
+
+
+
+1 st 
+*&---------------------------------------------------------------------*
+ *& Report ZASRS_MPP_UPLOAD
+ *&---------------------------------------------------------------------*
+ *&
+ *&---------------------------------------------------------------------*
+ REPORT zasrs_sku_master_upload.
+ *&---------------------------------------------------------------------*
+ *& Developer                   : Chaitanya Khilari                     *
+ *& Created On                  :                            *
+ *& Title                       :                          *
+ *& Report Name                 :                    *
+ *& Transaction Code            :                                    *
+ *& Transport Request           :                            *
+ *& Incident Number             :                           *
+ *&---------------------------------------------------------------------*
+ 
+
+TYPE-POOLS : truxs,slis.
+ TABLES sscrfields.
+ 
+DATA flag(1) TYPE c.
+ 
+*** End generated data section ***
+ 
+DATA: g_str1 TYPE string VALUE '.xls',
+       g_str  TYPE string,
+       g_str2 TYPE string.
+ 
+DATA : BEGIN OF it_header OCCURS 0,
+          line(50) TYPE c,
+        END OF it_header.
+ 
+TYPES : BEGIN OF ty_RECORD,
+           sku_Id          TYPE  char30,
+           alt_sku_id      TYPE  char15,
+ *          isactive        TYPE  char2,
+           sku_description TYPE  char50,
+ *          uom_id          TYPE  unit3,
+           expiry_days     TYPE  char4,
+           erdat           TYPE  erdat,
+           uzeit           TYPE  uzeit,
+           status          TYPE char30,
+         END OF ty_RECORD,
+ 
+        BEGIN OF ty_json,
+           skuId      TYPE char30,
+           altSkuId   TYPE char15,
+           isActive   TYPE char2,
+           skuDesc    TYPE char50,
+           uomId      TYPE char10,
+           expiryDays TYPE char4,
+         END OF ty_json.
+ 
+DATA : it_record   TYPE TABLE OF  ty_record,
+        wa_record   TYPE ty_record,
+        wa_dat      TYPE zasrs_sku_detail,
+        it_json     TYPE TABLE OF ty_json,
+        wa_json     TYPE ty_json,
+        token       TYPE ztoken,
+        lv_json     TYPE string,
+        result      TYPE  string,
+        return_code TYPE  i,
+        descr       TYPE  string,
+        it_raw      TYPE  truxs_t_text_data.
+ 
+DATA : bdcdata LIKE bdcdata OCCURS 0 WITH HEADER LINE.
+ 
+DATA :
+   lv_string   TYPE string,
+   lv_string1  TYPE string,
+   gt_messtab  TYPE TABLE OF bdcmsgcoll,
+   gt_messtab1 TYPE TABLE OF bdcmsgcoll,
+   gs_messtab  TYPE bdcmsgcoll,
+   gs_messtab1 TYPE bdcmsgcoll.
+ 
+DATA : gt_fieldcat TYPE slis_t_fieldcat_alv,
+        gs_fieldcat TYPE slis_fieldcat_alv,
+        gs_layout   TYPE slis_layout_alv.
+ 
+DATA:   BEGIN OF header.
+           INCLUDE STRUCTURE thead.
+ DATA:   END OF header.
+ 
+DATA:   BEGIN OF tlines OCCURS 10.
+           INCLUDE STRUCTURE tline.
+ DATA:   END OF tlines.
+ 
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-008.
+   PARAMETERS      : p_file TYPE rlgrap-filename ."OBLIGATORY.
+   SELECTION-SCREEN SKIP 1.
+   SELECTION-SCREEN PUSHBUTTON 10(20) but1 USER-COMMAND info.
+ SELECTION-SCREEN: END OF BLOCK b1.
+ 
+INITIALIZATION.
+   but1 = 'Download File Format'.
+ 
+*  WRITE ICON_CLOUD_DOWNLOAD   TO but1 AS ICON.
+ *  SET PF-STATUS 'ZASRS_UPL'.
+ AT SELECTION-SCREEN.
+ 
+  "XXXXXXXXXXXXXXXXXXXXXXXXX  DOWNLOAD FORMAT  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   it_header-line = 'SKU ID'.
+   APPEND it_header.
+   it_header-line = 'SKU ID DETAIL'.
+   APPEND it_header.
+   it_header-line = 'SKU DESCRIPTION'.
+   APPEND it_header.
+   it_header-line = 'EXPIRY DAYS'.
+   APPEND it_header.
+   "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   CASE sy-ucomm.
+     WHEN 'INFO'.
+       PERFORM download.
+   ENDCASE.
+ 
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file                        .
+ 
+  CALL FUNCTION 'F4_FILENAME'
+     EXPORTING
+       program_name  = syst-cprog
+       dynpro_number = syst-dynnr
+       field_name    = ' '
+     IMPORTING
+       file_name     = p_file.
+ 
+START-OF-SELECTION.
+ 
+
+
+  IF p_file IS INITIAL.
+     MESSAGE 'Please Enter The File' TYPE 'S' DISPLAY LIKE 'E' .
+     LEAVE LIST-PROCESSING.
+   ENDIF.
+ 
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+     EXPORTING
+ *     I_FIELD_SEPERATOR    = 'X'
+       i_line_header        = 'X'
+       i_tab_raw_data       = it_raw
+       i_filename           = p_file
+     TABLES
+       i_tab_converted_data = it_record
+     EXCEPTIONS
+       conversion_failed    = 1
+       OTHERS               = 2.
+   IF sy-subrc <> 0.
+     MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+             WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+   ENDIF.
+   SELECT * FROM zasrs_sku_detail INTO TABLE @DATA(it_tab).
+   LOOP AT it_record INTO wa_record.
+     wa_json-skuId    = wa_record-sku_id         .
+     wa_json-altSkuId    = wa_record-alt_sku_id     .
+ *    wa_json-isActive    = wa_record-isactive       .
+     wa_json-skuDesc     = wa_record-sku_description.
+ *    wa_json-uomId    = wa_record-uom_id         .
+     wa_json-expiryDays   = wa_record-expiry_days    .
+ *      WA_JSON   = WA_RECORD-erdat          .
+ *      WA_JSON   = WA_RECORD-uzeit          .
+     wa_record-erdat = sy-datum.
+     wa_record-uzeit = sy-uzeit.
+     wa_record-status = 'Already Updated'.
+     MOVE-CORRESPONDING wa_record TO wa_dat.
+     READ TABLE it_tab INTO DATA(wa_tab) WITH KEY sku_id =  wa_record-sku_id
+                                                  alt_sku_id = wa_record-alt_sku_id.
+     IF sy-subrc NE 0.
+       APPEND wa_jsoN TO it_json.
+       MODIFY zasrs_sku_detail FROM wa_dat.
+       wa_record-status = 'Updated Successfully'.
+     ENDIF.
+ 
+    MODIFY it_record FROM wa_record.
+     CLEAR : wa_record, gs_messtab, gt_messtab.
+ 
+  ENDLOOP.
+   "XXXXXXXXXXXXXXXXX Create Json XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   /ui2/cl_json=>serialize(
+     EXPORTING
+     data = it_JSON "Data to serialize
+ *  pretty_name = /ui2/cl_json=>pretty_mode-low_case "Pretty PRINT property names
+     RECEIVING
+     r_json = lv_json ).
+   REPLACE ALL OCCURRENCES OF 'SKUID'  IN lv_json WITH 'skuId     '.
+   REPLACE ALL OCCURRENCES OF 'ALTskuId'  IN lv_json WITH 'altSkuId  '.
+   REPLACE ALL OCCURRENCES OF 'ALTSKUID'  IN lv_json WITH 'altSkuId  '.
+   REPLACE ALL OCCURRENCES OF 'ISACTIVE'  IN lv_json WITH 'isActive  '.
+   REPLACE ALL OCCURRENCES OF 'SKUDESC'  IN lv_json WITH 'skuDesc   '.
+   REPLACE ALL OCCURRENCES OF 'UOMID'  IN lv_json WITH 'uomId     '.
+   REPLACE ALL OCCURRENCES OF 'EXPIRYDAYS'  IN lv_json WITH 'expiryDays'.
+   "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ 
+  "XXXXXXXXXXXXXXXXX GENERATE TOKEN XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   CALL FUNCTION 'ZASRS_TOKEN_GENERATION'
+     IMPORTING
+       token = token.
+   "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ 
+  "XXXXXXXXXXXXXXXXX SKU UPDATE TO ASRS XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   CALL FUNCTION 'ZASRS_DATA_UPDATE'
+     EXPORTING
+       token       = token
+       json        = lv_json
+       url         = 'http://192.168.1.101:4456/asrs/api/sync/sku'
+     IMPORTING
+       result      = result
+       return_code = return_code
+       descr       = descr.
+   IF return_code = '200'.
+     MESSAGE | { descr }  | TYPE 'I'.
+   ENDIF.
+   "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   PERFORM display_alv.
+ 
+*&---------------------------------------------------------------------*
+ *&      Form  DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *       text
+ *----------------------------------------------------------------------*
+ *  -->  p1        text
+ *  <--  p2        text
+ *----------------------------------------------------------------------*
+ FORM display_alv .
+ 
+  REFRESH: gt_fieldcat.
+ 
+  CLEAR: gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'SKU_ID'.
+   gs_fieldcat-seltext_l  = 'SKU_ID'.
+   gs_fieldcat-outputlen = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'ALT_SKU_ID'.
+   gs_fieldcat-seltext_l  = 'ALT_SKU_ID'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'SKU_DESCRIPTION'.
+   gs_fieldcat-seltext_l  = 'SKU_DESCRIPTION'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 100.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'EXPIRY_DAYS'.
+   gs_fieldcat-seltext_l  = 'EXPIRY_DAYS'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 5.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'ERDAT'.
+   gs_fieldcat-seltext_l  = 'Created On'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'UZEIT'.
+   gs_fieldcat-seltext_l  = 'Created At'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'STATUS'.
+   gs_fieldcat-seltext_l  = 'Status'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+     EXPORTING
+       is_layout     = gs_layout
+       it_fieldcat   = gt_fieldcat
+     TABLES
+       t_outtab      = It_RECORD
+     EXCEPTIONS
+       program_error = 1
+       OTHERS        = 2.
+ *  IF sy-subrc <> 0.
+ ** Implement suitable error handling here
+ *  ENDIF.
+ ENDFORM.                    " DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *& Form download
+ *&---------------------------------------------------------------------*
+ *& text
+ *&---------------------------------------------------------------------*
+ *& -->  p1        text
+ *& <--  p2        text
+ *&---------------------------------------------------------------------*
+ FORM download .
+   IF p_file NS '.xls'.
+     g_str = p_file.
+     IF g_str IS INITIAL.
+       g_str = 'C:\Users\User\Desktop\File_Format_Asrs'.
+     ENDIF.
+     CONCATENATE g_str g_str1 INTO g_str2.
+   ELSE.
+     g_str2 = p_file.
+   ENDIF.
+   APPEND INITIAL LINE TO it_record.
+   CALL FUNCTION 'GUI_DOWNLOAD'
+     EXPORTING
+       filename              = g_str2
+       filetype              = 'ASC'
+       write_field_separator = 'X'
+     TABLES
+       data_tab              = it_RECORD
+       fieldnames            = it_header.
+ ENDFORM.
+
+2nd 
+*&---------------------------------------------------------------------*
+ *& Report ZASRS_MPP_UPLOAD
+ *&---------------------------------------------------------------------*
+ *&
+ *&---------------------------------------------------------------------*
+ REPORT zasrs_pallet_master_upload.
+ *&---------------------------------------------------------------------*
+ *& Developer                   : Chaitanya Khilari                     *
+ *& Created On                  :                            *
+ *& Title                       :                          *
+ *& Report Name                 :                    *
+ *& Transaction Code            :                                    *
+ *& Transport Request           :                            *
+ *& Incident Number             :                           *
+ *&---------------------------------------------------------------------*
+ 
+
+TYPE-POOLS : truxs,slis.
+ TABLES sscrfields.
+ 
+DATA flag(1) TYPE c.
+ 
+*** End generated data section ***
+ 
+DATA: g_str1 TYPE string VALUE '.xls',
+       g_str  TYPE string,
+       g_str2 TYPE string.
+ 
+DATA : BEGIN OF it_header OCCURS 0,
+          line(50) TYPE c,
+        END OF it_header.
+ 
+TYPES : BEGIN OF ty_RECORD,
+           barcode TYPE barcode,
+           weight  TYPE gsgew,
+           erdat   TYPE erdat,
+           uzeit   TYPE uzeit,
+           status  TYPE char30,
+         END OF ty_RECORD,
+ 
+        BEGIN OF ty_json,
+           barcode TYPE barcode,
+           weight  TYPE gsgew,
+ *          uomId   TYPE meins,
+         END OF ty_json.
+ 
+DATA : it_record   TYPE TABLE OF  ty_record WITH HEADER LINE,
+        wa_record   TYPE ty_record,
+        wa_record1  like ZASRS_PALLET_M,
+        wa_dat      TYPE zasrs_pallet_m,
+        it_json     TYPE TABLE OF ty_json,
+        wa_json     TYPE ty_json,
+        token       TYPE ztoken,
+        lv_json     TYPE string,
+        result      TYPE  string,
+        return_code TYPE  i,
+        descr       TYPE  string,
+        it_raw      TYPE  truxs_t_text_data.
+ 
+
+DATA : bdcdata LIKE bdcdata OCCURS 0 WITH HEADER LINE.
+ 
+DATA :
+   lv_string   TYPE string,
+   lv_string1  TYPE string,
+   gt_messtab  TYPE TABLE OF bdcmsgcoll,
+   gt_messtab1 TYPE TABLE OF bdcmsgcoll,
+   gs_messtab  TYPE bdcmsgcoll,
+   gs_messtab1 TYPE bdcmsgcoll.
+ 
+DATA : gt_fieldcat TYPE slis_t_fieldcat_alv,
+        gs_fieldcat TYPE slis_fieldcat_alv,
+        gs_layout   TYPE slis_layout_alv.
+ 
+  DATA: gd_scol TYPE i VALUE '1',
+         gd_srow TYPE i VALUE '2',
+         gd_ecol TYPE i VALUE '256',
+        gd_erow TYPE i VALUE '65536'.
+ 
+
+  DATA: it_tab1 TYPE TABLE OF alsmex_tabline WITH HEADER LINE.
+ 
+DATA:   BEGIN OF header.
+           INCLUDE STRUCTURE thead.
+ DATA:   END OF header.
+ 
+DATA:   BEGIN OF tlines OCCURS 10.
+           INCLUDE STRUCTURE tline.
+ DATA:   END OF tlines.
+ 
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-008.
+   PARAMETERS      : p_file TYPE rlgrap-filename ."OBLIGATORY.
+   SELECTION-SCREEN SKIP 1.
+   SELECTION-SCREEN PUSHBUTTON 10(20) but1 USER-COMMAND info.
+ SELECTION-SCREEN: END OF BLOCK b1.
+ 
+INITIALIZATION.
+   but1 = 'Download File Format'.
+ 
+*  WRITE ICON_CLOUD_DOWNLOAD   TO but1 AS ICON.
+ *  SET PF-STATUS 'ZASRS_UPL'.
+ AT SELECTION-SCREEN.
+ 
+  "XXXXXXXXXXXXXXXXXXXXXXXXX  DOWNLOAD FORMAT  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   it_header-line = 'BARCODE'.
+   APPEND it_header.
+   it_header-line = 'WEIGHT'.
+   APPEND it_header.
+ 
+  "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   CASE sy-ucomm.
+     WHEN 'INFO'.
+       PERFORM download.
+   ENDCASE.
+ 
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file                        .
+ 
+  CALL FUNCTION 'F4_FILENAME'
+     EXPORTING
+       program_name  = syst-cprog
+       dynpro_number = syst-dynnr
+       field_name    = ' '
+     IMPORTING
+       file_name     = p_file.
+ 
+START-OF-SELECTION.
+ 
+
+
+  IF p_file IS INITIAL.
+     MESSAGE 'Please Enter The File' TYPE 'S' DISPLAY LIKE 'E' .
+     LEAVE LIST-PROCESSING.
+   ENDIF.
+ 
+*  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+ *    EXPORTING
+ **     I_FIELD_SEPERATOR    = 'X'
+ *      i_line_header        = 'X'
+ *      i_tab_raw_data       = it_raw
+ *      i_filename           = p_file
+ *    TABLES
+ *      i_tab_converted_data = it_record
+ *    EXCEPTIONS
+ *      conversion_failed    = 1
+ *      OTHERS               = 2.
+ *  IF sy-subrc <> 0.
+ *    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+ *            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+ *  ENDIF.
+ 
+
+CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+   EXPORTING
+     filename                  = P_FILE
+       i_begin_col             = gd_scol
+       i_begin_row             = gd_srow
+       i_end_col               = gd_ecol
+       i_end_row               = gd_erow
+       TABLES
+      intern                   = it_tab1
+  EXCEPTIONS
+    INCONSISTENT_PARAMETERS       = 1
+    UPLOAD_OLE                    = 2
+    OTHERS                        = 3
+           .
+ IF sy-subrc <> 0.
+ * Implement suitable error handling here
+ ENDIF.
+ 
+
+
+LOOP AT it_tab1.
+ 
+    CASE it_tab1-col.
+       WHEN '0001'.
+         IT_RECORD-BARCODE = it_tab1-value.
+       WHEN '0002'.
+         IT_RECORD-WEIGHT = it_tab1-value.
+     ENDCASE.
+ 
+    AT END OF row.
+       APPEND IT_RECORD.
+       CLEAR IT_RECORD.
+     ENDAT.
+ 
+  ENDLOOP.
+ 
+
+  SELECT * FROM zasrs_pallet_m INTO TABLE @DATA(it_tab).
+   LOOP AT it_record INTO wa_record.
+     wa_json-barcode    = wa_record-barcode        .
+     wa_json-weight    = wa_record-weight     .
+     .    wa_record-erdat = sy-datum.
+     wa_record-uzeit = sy-uzeit.
+     wa_record-status = 'Already Updated'.
+     MOVE-CORRESPONDING wa_record TO wa_dat.
+     READ TABLE it_tab INTO DATA(wa_tab) WITH KEY barcode =  wa_record-barcode.
+     IF sy-subrc NE 0.
+       APPEND wa_jsoN TO it_json.
+       wa_record-status = 'Updated Successfully'.
+     ENDIF.
+     MODIFY it_record FROM wa_record.
+     CLEAR : wa_record, gs_messtab, gt_messtab.
+ 
+  ENDLOOP.
+   IF it_json IS NOT INITIAL.
+     "XXXXXXXXXXXXXXXXX Create Json XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     /ui2/cl_json=>serialize(
+       EXPORTING
+       data = it_JSON "Data to serialize
+ *  pretty_name = /ui2/cl_json=>pretty_mode-low_case "Pretty PRINT property names
+       RECEIVING
+       r_json = lv_json ).
+     REPLACE ALL OCCURRENCES OF 'BARCODE'  IN lv_json WITH 'barcode'.
+     REPLACE ALL OCCURRENCES OF 'WEIGHT'  IN lv_json WITH 'weight'.
+     REPLACE ALL OCCURRENCES OF 'UOMID'  IN lv_json WITH 'uomId'.
+ 
+    "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ 
+    "XXXXXXXXXXXXXXXXX GENERATE TOKEN XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     CALL FUNCTION 'ZASRS_TOKEN_GENERATION'
+       IMPORTING
+         token = token.
+     "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ 
+    "XXXXXXXXXXXXXXXXX SKU UPDATE TO ASRS XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     CALL FUNCTION 'ZASRS_DATA_UPDATE'
+       EXPORTING
+         token       = token
+         json        = lv_json
+         url         = 'http://192.168.1.101:4456/asrs/api/pallet/init'
+       IMPORTING
+         result      = result
+         return_code = return_code
+         descr       = descr.
+     IF return_code = '200'.
+       LOOP AT it_record INTO data(wa_rec).
+         wa_record1-barcode    = wa_rec-barcode        .
+         wa_record1-weight    = wa_rec-weight     .
+         wa_record1-erdat = sy-datum.
+         wa_record1-uzeit = sy-uzeit.
+         wa_record1-status = wa_rec-status.
+ 
+        MODIFY zasrs_pallet_m FROM wa_record1.
+         clear wa_record.
+ 
+      ENDLOOP.
+       MESSAGE | { descr }  | TYPE 'I'.
+     ENDIF.
+   ELSE.
+     MESSAGE | No Data Updated To ASRS  | TYPE 'I'.
+   ENDIF.
+   "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   PERFORM display_alv.
+ 
+*&---------------------------------------------------------------------*
+ *&      Form  DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *       text
+ *----------------------------------------------------------------------*
+ *  -->  p1        text
+ *  <--  p2        text
+ *----------------------------------------------------------------------*
+ FORM display_alv .
+ 
+  REFRESH: gt_fieldcat.
+ 
+  CLEAR: gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'BARCODE'.
+   gs_fieldcat-seltext_l  = 'PALLET BARCODE'.
+   gs_fieldcat-outputlen = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'WEIGHT'.
+   gs_fieldcat-seltext_l  = 'PALLET WEIGHT'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'ERDAT'.
+   gs_fieldcat-seltext_l  = 'Created On'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'UZEIT'.
+   gs_fieldcat-seltext_l  = 'Created At'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'STATUS'.
+   gs_fieldcat-seltext_l  = 'Status'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+     EXPORTING
+       is_layout     = gs_layout
+       it_fieldcat   = gt_fieldcat
+     TABLES
+       t_outtab      = It_RECORD
+     EXCEPTIONS
+       program_error = 1
+       OTHERS        = 2.
+ *  IF sy-subrc <> 0.
+ ** Implement suitable error handling here
+ *  ENDIF.
+ ENDFORM.                    " DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *& Form download
+ *&---------------------------------------------------------------------*
+ *& text
+ *&---------------------------------------------------------------------*
+ *& -->  p1        text
+ *& <--  p2        text
+ *&---------------------------------------------------------------------*
+ FORM download .
+   IF p_file NS '.xls'.
+     g_str = p_file.
+     IF g_str IS INITIAL.
+       g_str = 'C:\Users\User\Desktop\File_Format_Asrs'.
+     ENDIF.
+     CONCATENATE g_str g_str1 INTO g_str2.
+   ELSE.
+     g_str2 = p_file.
+   ENDIF.
+   APPEND INITIAL LINE TO it_record.
+   CALL FUNCTION 'GUI_DOWNLOAD'
+     EXPORTING
+       filename              = g_str2
+       filetype              = 'ASC'
+       write_field_separator = 'X'
+     TABLES
+       data_tab              = it_RECORD
+       fieldnames            = it_header.
+ ENDFORM.
+
+3 rd
+*&---------------------------------------------------------------------*
+ *& Report ZASRS_MPP_UPLOAD
+ *&---------------------------------------------------------------------*
+ *&
+ *&---------------------------------------------------------------------*
+ REPORT zasrs_inbound_transactn_upload.
+ *&---------------------------------------------------------------------*
+ *& Developer                   : Chaitanya Khilari                     *
+ *& Created On                  :                            *
+ *& Title                       :                          *
+ *& Report Name                 :                    *
+ *& Transaction Code            :                                    *
+ *& Transport Request           :                            *
+ *& Incident Number             :                           *
+ *&---------------------------------------------------------------------*
+ 
+
+TYPE-POOLS : truxs,slis.
+ TABLES sscrfields.
+ 
+DATA end_batch(1) TYPE c.
+ DATA end_po(1) TYPE c.
+ 
+*** End generated data section ***
+ 
+DATA: g_str1 TYPE string VALUE '.xls',
+       g_str  TYPE string,
+       g_str2 TYPE string.
+ 
+DATA : BEGIN OF it_header OCCURS 0,
+          line(50) TYPE c,
+        END OF it_header.
+ 
+TYPES : BEGIN OF ty_RECORD,
+           Txnid     TYPE   char20,
+           lifnr     TYPE   char30,
+           sku_id    TYPE   char30,
+           qty       TYPE menge_d,
+           batch     TYPE   charg_d,
+           barcodes  TYPE  barcode,
+           erdat     TYPE   erdat,
+           uzeit     TYPE   uzeit,
+ *IN_OUT  type   IN_OUT   ,
+           status    TYPE char30,
+           batch_end TYPE c,
+         END OF ty_RECORD,
+ 
+        BEGIN OF ty_json2,
+           sourceId TYPE char20,
+           skuId    TYPE char30,
+           qty      TYPE menge_D,
+           batch    TYPE charg_d,
+           barcodes TYPE STANDARD TABLE OF string WITH EMPTY KEY , "barcode,
+ *          uomId   TYPE meins,
+         END OF ty_json2.
+ DATA it_js TYPE  TABLE OF ty_json2.
+ *DATA tt_json TYPE STANDARD TABLE OF it_js.
+ TYPES:
+   BEGIN OF ty_json,
+     txnId     TYPE char20,
+     txnVendor TYPE char30,
+     type      TYPE char2,
+ *    sourceItems TYPE  tY_json2,
+ *    sourceItems TYPE  tt_json,
+   END OF ty_json.
+ 
+
+DATA : it_record      TYPE TABLE OF  ty_record,
+        wa_record      TYPE ty_record,
+        wa_dat         TYPE zasrs_trans,
+        it_json        TYPE TABLE OF zasrs_json_str, "y_json,
+        wa_sourceitems TYPE zasrs_source_item_json,
+        wa_json        TYPE zasrs_json_str, "ty_json,
+        token          TYPE ztoken,
+        lv_json        TYPE string,
+        result         TYPE  string,
+        return_code    TYPE  i,
+        descr          TYPE  string,
+        ind            TYPE char3,
+        next_no        TYPE char20,
+        it_raw         TYPE  truxs_t_text_data.
+ 
+DATA :
+   lv_string  TYPE string,
+   lv_string1 TYPE string,
+   lv_batch   TYPE charg_d,
+   last_ind   LIKE sy-tabix.
+ 
+DATA : gt_fieldcat TYPE slis_t_fieldcat_alv,
+        gs_fieldcat TYPE slis_fieldcat_alv,
+        gs_layout   TYPE slis_layout_alv.
+ 
+DATA:   BEGIN OF header.
+           INCLUDE STRUCTURE thead.
+ DATA:   END OF header.
+ 
+DATA:   BEGIN OF tlines OCCURS 10.
+           INCLUDE STRUCTURE tline.
+ DATA:   END OF tlines.
+ 
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-008.
+   PARAMETERS      : p_file TYPE rlgrap-filename ."OBLIGATORY.
+   SELECTION-SCREEN SKIP 1.
+   SELECTION-SCREEN PUSHBUTTON 10(20) but1 USER-COMMAND info.
+ SELECTION-SCREEN: END OF BLOCK b1.
+ 
+INITIALIZATION.
+   but1 = 'Download File Format'.
+ 
+*  WRITE ICON_CLOUD_DOWNLOAD   TO but1 AS ICON.
+ *  SET PF-STATUS 'ZASRS_UPL'.
+ AT SELECTION-SCREEN.
+ 
+  "XXXXXXXXXXXXXXXXXXXXXXXXX  DOWNLOAD FORMAT  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   it_header-line = 'Purchase Order no '.
+   APPEND it_header.
+   it_header-line = 'Vendor'.
+   APPEND it_header.
+   it_header-line = 'SKU ID'.
+   APPEND it_header.
+   it_header-line = 'Quantity'.
+   APPEND it_header.
+   it_header-line = 'LOT No.'.
+   APPEND it_header.
+   it_header-line = 'Article barcode'.
+   APPEND it_header.
+ 
+  "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   CASE sy-ucomm.
+     WHEN 'INFO'.
+       PERFORM download.
+   ENDCASE.
+ 
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file                        .
+ 
+  CALL FUNCTION 'F4_FILENAME'
+     EXPORTING
+       program_name  = syst-cprog
+       dynpro_number = syst-dynnr
+       field_name    = ' '
+     IMPORTING
+       file_name     = p_file.
+ 
+START-OF-SELECTION.
+ 
+
+
+  IF p_file IS INITIAL.
+     MESSAGE 'Please Enter The File' TYPE 'S' DISPLAY LIKE 'E' .
+     LEAVE LIST-PROCESSING.
+   ENDIF.
+ 
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+     EXPORTING
+ *     I_FIELD_SEPERATOR    = 'X'
+       i_line_header        = 'X'
+       i_tab_raw_data       = it_raw
+       i_filename           = p_file
+     TABLES
+       i_tab_converted_data = it_record
+     EXCEPTIONS
+       conversion_failed    = 1
+       OTHERS               = 2.
+ 
+  IF sy-subrc <> 0.
+     MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+             WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+   ENDIF.
+   SELECT * FROM zasrs_trans INTO TABLE @DATA(it_tab).
+ *  SELECT SINGLE MAX( txnid ) FROM zasrs_trans INTO @DATA(txnid).
+ *  txnid    = txnid + 1."wa_record-Txnid
+ *  condense txnid.     .
+     sort it_record by batch.
+     append INITIAL LINE TO it_record.
+   LOOP AT it_record INTO wa_record.
+ 
+
+    IF lv_batch NE wa_record-batch and sy-tabix ne 1.
+         last_ind = sy-tabix - 1.
+       wa_record-batch_end = 'X'.
+       MODIFY it_record FROM wa_record INDEX last_ind TRANSPORTING batch_end. .
+     ENDIF.
+ 
+    lv_batch = wa_record-batch.
+ 
+  ENDLOOP.
+ 
+  DELETE IT_RECORD WHERE BATCH EQ ''.
+ 
+  LOOP AT it_record INTO wa_record.
+     ON CHANGE OF wa_record-txnid.
+       DO 100 TIMES.
+         ind = sy-index.
+         CONDENSE ind.
+         CONCATENATE wa_record-txnid '-' ind INTO next_no.
+         CONDENSE next_no.
+         SELECT SINGLE  txnid  FROM zasrs_trans INTO @DATA(txnid)
+           WHERE txnid = @next_no.
+         IF sy-subrc NE 0.
+           txnid = wa_record-txnid = next_no.
+           EXIT.
+         ENDIF.
+       ENDDO.
+     ENDON.
+     wa_json-txnid    = Txnid        ."txnid ."          .
+     wa_json-txnvendor    = wa_record-lifnr        .
+ 
+    APPEND  wa_record-barcodes TO wa_sourceitems-barcodes.
+     " = wa_json-txnid .
+     wa_sourceitems-sourceid  = wa_json-txnid .
+     wa_sourceitems-batch    = wa_record-batch        .
+     wa_sourceitems-skuid    = wa_record-sku_id        .
+     wa_sourceitems-qty   = wa_sourceitems-qty + 1 .
+ 
+    wa_json-type   = 'I' .
+ 
+    MOVE-CORRESPONDING wa_record TO wa_dat.
+     CLEAR :end_batch,end_po.
+ *    AT END OF batch.
+ *      end_batch = 'X'.
+ *    ENDAT.
+     if wa_record-batch_end = 'X'.
+       end_batch = 'X'.
+       endif.
+     IF end_batch = 'X'.
+       APPEND wa_sourceitems TO wa_json-sourceitems .
+       CLEAR: wa_sourceitems.
+     ENDIF.
+ 
+    AT END OF Txnid.
+       end_po = 'X'.
+     ENDAT.
+     wa_record-erdat = sy-datum.
+     wa_record-uzeit = sy-uzeit.
+     wa_record-status = 'Issue in data'.
+ 
+    READ TABLE it_tab INTO DATA(wa_tab) WITH KEY barcodes =  wa_record-barcodes.
+     IF sy-subrc NE 0.
+       IF end_po = 'X'.
+         APPEND wa_jsoN TO it_json.
+         CLEAR wa_json.
+       ENDIF.
+       wa_record-status = 'Updating'.
+     ELSE.
+       wa_record-status = 'Already Updated '.
+     ENDIF.
+     wa_record-txnid    = Txnid        .
+     MODIFY it_record FROM wa_record.
+     CLEAR : wa_record.
+ 
+  ENDLOOP.
+   IF it_json IS NOT INITIAL.
+     "XXXXXXXXXXXXXXXXX Create Json XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     /ui2/cl_json=>serialize(
+       EXPORTING
+       data = it_JSON "Data to serialize
+ *  pretty_name = /ui2/cl_json=>pretty_mode-low_case "Pretty PRINT property names
+       RECEIVING
+       r_json = lv_json ).
+     REPLACE ALL OCCURRENCES OF 'TXNID' IN lv_json WITH 'txnId'.
+     REPLACE ALL OCCURRENCES OF 'TXNVENDOR' IN lv_json WITH 'txnVendor'.
+     REPLACE ALL OCCURRENCES OF 'TYPE' IN lv_json WITH 'type'.
+     REPLACE ALL OCCURRENCES OF 'SOURCEITEMS' IN lv_json WITH 'sourceItems'.
+     REPLACE ALL OCCURRENCES OF 'SOURCEID' IN lv_json WITH 'sourceId'.
+     REPLACE ALL OCCURRENCES OF 'SKUID   ' IN lv_json WITH 'skuId   '.
+     REPLACE ALL OCCURRENCES OF 'QTY     ' IN lv_json WITH 'qty     '.
+     REPLACE ALL OCCURRENCES OF 'BATCH   ' IN lv_json WITH 'batch   '.
+     REPLACE ALL OCCURRENCES OF 'BARCODES' IN lv_json WITH 'barcodes'.
+     REPLACE ALL OCCURRENCES OF '},{"barcodes":' IN lv_json WITH ','.
+     REPLACE ALL OCCURRENCES OF '{"barcodes":' IN lv_json WITH ''.
+     REPLACE ALL OCCURRENCES OF '"}]},' IN lv_json WITH '"]},'.
+     REPLACE ALL OCCURRENCES OF '"}]}]}' IN lv_json WITH '"]}]}'.
+ *    REPLACE ALL OCCURRENCES OF ':{' IN lv_json WITH ':[{'.
+ *    REPLACE ALL OCCURRENCES OF ']}' IN lv_json WITH ']}]'.
+ 
+    "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     IF sy-mandt = '100'.
+       MESSAGE 'Please update from Production client' TYPE 'E'.
+     ENDIF.
+     "XXXXXXXXXXXXXXXXX GENERATE TOKEN XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     CALL FUNCTION 'ZASRS_TOKEN_GENERATION'
+       IMPORTING
+         token = token.
+     "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ 
+    "XXXXXXXXXXXXXXXXX SKU UPDATE TO ASRS XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     CALL FUNCTION 'ZASRS_DATA_UPDATE'
+       EXPORTING
+         token       = token
+         json        = lv_json
+         url         = 'http://192.168.1.101:4456/asrs/api/sync/txn'
+       IMPORTING
+         result      = result
+         return_code = return_code
+         descr       = descr.
+     IF return_code = '200'.
+       LOOP AT it_record INTO wa_record.
+         MOVE-CORRESPONDING wa_record TO wa_dat.
+         READ TABLE it_tab INTO DATA(wa_tab1) WITH KEY barcodes =  wa_record-barcodes.
+         IF sy-subrc NE 0.
+           wa_dat-txnid = wa_record-Txnid.
+           wa_dat-in_out = 'IN'.
+           wa_dat-in_date = sy-datum.
+           wa_dat-in_time = sy-uzeit.
+           wa_dat-status = 'IN From Sap To ASRS'.
+           MODIFY zasrs_trans FROM wa_dat.
+           wa_record-status = 'Updated Successfully'.
+           MODIFY it_record FROM wa_record.
+         ENDIF.
+       ENDLOOP.
+       MESSAGE | { descr }  | TYPE 'I'.
+     ELSE.
+       MESSAGE | No Data Updated To ASRS  | TYPE 'I'.
+     ENDIF.
+   ELSE.
+     MESSAGE | No Data Updated To ASRS  | TYPE 'I'.
+   ENDIF.
+   "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   PERFORM display_alv.
+ 
+*&---------------------------------------------------------------------*
+ *&      Form  DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *       text
+ *----------------------------------------------------------------------*
+ *  -->  p1        text
+ *  <--  p2        text
+ *----------------------------------------------------------------------*
+ FORM display_alv .
+ 
+  REFRESH: gt_fieldcat.
+ 
+  CLEAR: gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'TXNID'.
+   gs_fieldcat-seltext_l  = 'PO NUMBER/ Txn ID'.
+   gs_fieldcat-outputlen = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'LIFNR'.
+   gs_fieldcat-seltext_l  = 'VENDOR'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'ERDAT'.
+   gs_fieldcat-seltext_l  = 'Created On'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'UZEIT'.
+   gs_fieldcat-seltext_l  = 'Created At'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'STATUS'.
+   gs_fieldcat-seltext_l  = 'Status'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+     EXPORTING
+       is_layout     = gs_layout
+       it_fieldcat   = gt_fieldcat
+     TABLES
+       t_outtab      = It_RECORD
+     EXCEPTIONS
+       program_error = 1
+       OTHERS        = 2.
+ *  IF sy-subrc <> 0.
+ ** Implement suitable error handling here
+ *  ENDIF.
+ ENDFORM.                    " DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *& Form download
+ *&---------------------------------------------------------------------*
+ *& text
+ *&---------------------------------------------------------------------*
+ *& -->  p1        text
+ *& <--  p2        text
+ *&---------------------------------------------------------------------*
+ FORM download .
+   IF p_file NS '.xls'.
+     g_str = p_file.
+     IF g_str IS INITIAL.
+       g_str = 'C:\Users\User\Desktop\File_Format_Asrs'.
+     ENDIF.
+     CONCATENATE g_str g_str1 INTO g_str2.
+   ELSE.
+     g_str2 = p_file.
+   ENDIF.
+   APPEND INITIAL LINE TO it_record.
+   CALL FUNCTION 'GUI_DOWNLOAD'
+     EXPORTING
+       filename              = g_str2
+       filetype              = 'ASC'
+       write_field_separator = 'X'
+     TABLES
+       data_tab              = it_RECORD
+       fieldnames            = it_header.
+ ENDFORM.
+
+
+4 th *&---------------------------------------------------------------------*
+ *& Report ZASRS_MPP_UPLOAD
+ *&---------------------------------------------------------------------*
+ *&
+ *&---------------------------------------------------------------------*
+ REPORT zasrs_outbound_transactn_upl.
+ *&---------------------------------------------------------------------*
+ *& Developer                   : Chaitanya Khilari                     *
+ *& Created On                  :                            *
+ *& Title                       :                          *
+ *& Report Name                 :                    *
+ *& Transaction Code            :                                    *
+ *& Transport Request           :                            *
+ *& Incident Number             :                           *
+ *&---------------------------------------------------------------------*
+ 
+
+TYPE-POOLS : truxs,slis.
+ TABLES sscrfields.
+ 
+DATA flag(1) TYPE c.
+ 
+*** End generated data section ***
+ 
+DATA: g_str1 TYPE string VALUE '.xls',
+       g_str  TYPE string,
+       g_str2 TYPE string.
+ 
+DATA : BEGIN OF it_header OCCURS 0,
+          line(50) TYPE c,
+        END OF it_header.
+ 
+TYPES : BEGIN OF ty_RECORD,
+           TxnID  TYPE   char20,
+           lifnr  TYPE   char30,
+           sku_id TYPE   char20,
+ *          batch  TYPE charg_d,
+           qty    TYPE menge_d,
+           erdat  TYPE   erdat,
+           uzeit  TYPE   uzeit,
+ *IN_OUT  type   IN_OUT   ,
+           status TYPE char30,
+         END OF ty_RECORD,
+ 
+        BEGIN OF ty_json2,
+           sourceId TYPE char20,
+           skuId    TYPE char20,
+           qty      TYPE menge_D,
+ *          batch    TYPE charg_d,
+         END OF ty_json2,
+ 
+        BEGIN OF ty_json,
+           txnId       TYPE char20,
+           txnVendor   TYPE char30,
+           type        TYPE char2,
+           sourceItems TYPE  tY_json2,
+ *          sourceItems TYPE  tt_json,
+         END OF ty_json.
+ 
+
+DATA : it_record   TYPE TABLE OF  ty_record,
+        wa_record   TYPE ty_record,
+        wa_dat      TYPE zasrs_trans,
+        it_json     TYPE TABLE OF ZASRS_OUTBOUND_STR,
+        wa_json     TYPE ZASRS_OUTBOUND_STR,
+        WA_SOURCEITEMS TYPE ZASRS_OUTBOUND_SOURCE_STR,
+        token       TYPE ztoken,
+        lv_json     TYPE string,
+        result      TYPE  string,
+        return_code TYPE  i,
+        descr       TYPE  string,
+        it_raw      TYPE  truxs_t_text_data.
+ 
+DATA : bdcdata LIKE bdcdata OCCURS 0 WITH HEADER LINE.
+ 
+DATA :
+   lv_string  TYPE string,
+   lv_string1 TYPE string.
+ 
+DATA : gt_fieldcat TYPE slis_t_fieldcat_alv,
+        gs_fieldcat TYPE slis_fieldcat_alv,
+        gs_layout   TYPE slis_layout_alv.
+ 
+DATA:   BEGIN OF header.
+           INCLUDE STRUCTURE thead.
+ DATA:   END OF header.
+ 
+DATA:   BEGIN OF tlines OCCURS 10.
+           INCLUDE STRUCTURE tline.
+ DATA:   END OF tlines.
+ 
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-008.
+   PARAMETERS      : p_file TYPE rlgrap-filename ."OBLIGATORY.
+   SELECTION-SCREEN SKIP 1.
+   SELECTION-SCREEN PUSHBUTTON 10(20) but1 USER-COMMAND info.
+ SELECTION-SCREEN: END OF BLOCK b1.
+ 
+INITIALIZATION.
+   but1 = 'Download File Format'.
+ 
+*  WRITE ICON_CLOUD_DOWNLOAD   TO but1 AS ICON.
+ *  SET PF-STATUS 'ZASRS_UPL'.
+ AT SELECTION-SCREEN.
+ 
+  "XXXXXXXXXXXXXXXXXXXXXXXXX  DOWNLOAD FORMAT  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   it_header-line = 'Transaction ID '.
+   APPEND it_header.
+   it_header-line = 'Vendor'.
+   APPEND it_header.
+   it_header-line = 'SKU ID'.
+   APPEND it_header.
+   it_header-line = 'Quantity.'.
+   APPEND it_header.
+ *  it_header-line = 'Article barcode'.
+ *  APPEND it_header.
+ 
+  "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   CASE sy-ucomm.
+     WHEN 'INFO'.
+       PERFORM download.
+   ENDCASE.
+ 
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file                        .
+ 
+  CALL FUNCTION 'F4_FILENAME'
+     EXPORTING
+       program_name  = syst-cprog
+       dynpro_number = syst-dynnr
+       field_name    = ' '
+     IMPORTING
+       file_name     = p_file.
+ 
+START-OF-SELECTION.
+ 
+
+
+  IF p_file IS INITIAL.
+     MESSAGE 'Please Enter The File' TYPE 'S' DISPLAY LIKE 'E' .
+     LEAVE LIST-PROCESSING.
+   ENDIF.
+ 
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+     EXPORTING
+ *     I_FIELD_SEPERATOR    = 'X'
+       i_line_header        = 'X'
+       i_tab_raw_data       = it_raw
+       i_filename           = p_file
+     TABLES
+       i_tab_converted_data = it_record
+     EXCEPTIONS
+       conversion_failed    = 1
+       OTHERS               = 2.
+   IF sy-subrc <> 0.
+     MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+             WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+   ENDIF.
+   SELECT * FROM zasrs_trans INTO TABLE @DATA(it_tab).
+   LOOP AT it_record INTO wa_record.
+ 
+
+      wa_json-txnid    = wa_record-txnid        .
+       wa_sourceitems-sourceid  = wa_json-txnid      .
+       wa_json-txnvendor    = wa_record-lifnr               .
+       wa_jsoN-type = 'O'.
+       wa_sourceitems-skuid    = wa_record-sku_id        .
+ *     wa_json-sourceItems-batch    = wa_record-batch        .
+       wa_sourceitems-qty   = wa_record-qty."wa_json-sourceItems-qty + 1 .
+       wa_record-erdat = sy-datum.
+       wa_record-uzeit = sy-uzeit.
+ 
+wa_record-status = 'Issue in data'.
+       MOVE-CORRESPONDING wa_record TO wa_dat.
+ *
+       APPEND  WA_SOURCEITEMS TO wa_json-sourceitems .
+       CLEAR: wa_sourceitems.
+ 
+    READ TABLE it_tab INTO DATA(wa_tab) WITH KEY TxnID  =  wa_record-TxnID.
+     IF sy-subrc NE 0.
+       AT END OF txnid .
+       APPEND wa_jsoN TO it_json.
+       CLEAR wa_json.
+       ENDAT.
+       wa_record-status = 'Fail'.
+     ELSE.
+       wa_record-status = 'Already Updated '.
+     ENDIF.
+     MODIFY it_record FROM wa_record.
+     CLEAR : wa_record.
+ 
+  ENDLOOP.
+ 
+  IF it_json IS NOT INITIAL.
+     "XXXXXXXXXXXXXXXXX Create Json XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     /ui2/cl_json=>serialize(
+       EXPORTING
+       data = it_JSON "Data to serialize
+ *  pretty_name = /ui2/cl_json=>pretty_mode-low_case "Pretty PRINT property names
+       RECEIVING
+       r_json = lv_json ).
+     REPLACE ALL OCCURRENCES OF 'TXNID' IN lv_json WITH 'txnId'.
+     REPLACE ALL OCCURRENCES OF 'TXNVENDOR' IN lv_json WITH 'txnVendor'.
+     REPLACE ALL OCCURRENCES OF 'TYPE' IN lv_json WITH 'type'.
+     REPLACE ALL OCCURRENCES OF 'SOURCEITEMS' IN lv_json WITH 'sourceItems'.
+     REPLACE ALL OCCURRENCES OF 'SOURCEID' IN lv_json WITH 'sourceId'.
+     REPLACE ALL OCCURRENCES OF 'SKUID   ' IN lv_json WITH 'skuId   '.
+     REPLACE ALL OCCURRENCES OF 'QTY     ' IN lv_json WITH 'qty     '.
+     REPLACE ALL OCCURRENCES OF ':{' IN lv_json WITH ':[{'.
+     REPLACE ALL OCCURRENCES OF '}}' IN lv_json WITH '}]}'.
+ 
+
+    "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ 
+    "XXXXXXXXXXXXXXXXX GENERATE TOKEN XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     CALL FUNCTION 'ZASRS_TOKEN_GENERATION'
+       IMPORTING
+         token = token.
+     "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ 
+    "XXXXXXXXXXXXXXXXX SKU UPDATE TO ASRS XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     CALL FUNCTION 'ZASRS_DATA_UPDATE'
+       EXPORTING
+         token       = token
+         json        = lv_json
+         url         = 'http://192.168.1.101:4456/asrs/api/sync/txn'
+       IMPORTING
+         result      = result
+         return_code = return_code
+         descr       = descr.
+     IF return_code = '200'.
+       LOOP AT it_record INTO wa_record.
+         MOVE-CORRESPONDING wa_record TO wa_dat.
+         READ TABLE it_tab INTO DATA(wa_tab1) WITH KEY Txnid =  wa_record-txnid.
+         IF sy-subrc NE 0.
+           wa_dat-in_out = 'OUT'.
+           MODIFY zasrs_trans FROM wa_dat.
+           wa_record-status = 'Updated Successfully'.
+           MODIFY it_record FROM wa_record.
+         ENDIF.
+       ENDLOOP.
+       MESSAGE | { descr }  | TYPE 'I'.
+     ELSE.
+       MESSAGE | No Data Updated To ASRS  | TYPE 'I'.
+     ENDIF.
+   ELSE.
+     MESSAGE | No Data Updated To ASRS  | TYPE 'I'.
+   ENDIF.
+   "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   PERFORM display_alv.
+ 
+*&---------------------------------------------------------------------*
+ *&      Form  DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *       text
+ *----------------------------------------------------------------------*
+ *  -->  p1        text
+ *  <--  p2        text
+ *----------------------------------------------------------------------*
+ FORM display_alv .
+ 
+  REFRESH: gt_fieldcat.
+ 
+  CLEAR: gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'TXNID'.
+   gs_fieldcat-seltext_l  = 'PO NUMBER'.
+   gs_fieldcat-outputlen = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'LIFNR'.
+   gs_fieldcat-seltext_l  = 'VENDOR'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'ERDAT'.
+   gs_fieldcat-seltext_l  = 'Created On'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'UZEIT'.
+   gs_fieldcat-seltext_l  = 'Created At'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+  gs_fieldcat-fieldname  = 'STATUS'.
+   gs_fieldcat-seltext_l  = 'Status'.
+   gs_fieldcat-ddic_outputlen = 'X'.
+   gs_fieldcat-outputlen  = 10.
+   gs_fieldcat-outputlen  = 15.
+   APPEND gs_fieldcat TO gt_fieldcat.
+   CLEAR gs_fieldcat.
+ 
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+     EXPORTING
+       is_layout     = gs_layout
+       it_fieldcat   = gt_fieldcat
+     TABLES
+       t_outtab      = It_RECORD
+     EXCEPTIONS
+       program_error = 1
+       OTHERS        = 2.
+ *  IF sy-subrc <> 0.
+ ** Implement suitable error handling here
+ *  ENDIF.
+ ENDFORM.                    " DISPLAY_ALV
+ *&---------------------------------------------------------------------*
+ *& Form download
+ *&---------------------------------------------------------------------*
+ *& text
+ *&---------------------------------------------------------------------*
+ *& -->  p1        text
+ *& <--  p2        text
+ *&---------------------------------------------------------------------*
+ FORM download .
+   IF p_file NS '.xls'.
+     g_str = p_file.
+     IF g_str IS INITIAL.
+       g_str = 'C:\Users\User\Desktop\File_Format_Asrs'.
+     ENDIF.
+     CONCATENATE g_str g_str1 INTO g_str2.
+   ELSE.
+     g_str2 = p_file.
+   ENDIF.
+   APPEND INITIAL LINE TO it_record.
+   CALL FUNCTION 'GUI_DOWNLOAD'
+     EXPORTING
+       filename              = g_str2
+       filetype              = 'ASC'
+       write_field_separator = 'X'
+     TABLES
+       data_tab              = it_RECORD
+       fieldnames            = it_header.
+ ENDFORM.
+
+ 5h
+*&---------------------------------------------------------------------*
+ *& Report ZASRS_REPORT
+ *&---------------------------------------------------------------------*
+ *&
+ *&---------------------------------------------------------------------*
+ REPORT zasrs_report.
+ 
+TABLES:zasrs_trans.
+ 
+DATA :it_data TYPE TABLE OF zasrs_trans,
+       wa_data TYPE          zasrs_trans.
+ 
+
+DATA : it_fcat TYPE slis_t_fieldcat_alv,
+        wa_fcat TYPE slis_fieldcat_alv.
+ 
+DATA : tevent TYPE slis_t_event,
+        wevent LIKE LINE OF tevent.
+ 
+
+SELECT * FROM zasrs_trans INTO TABLE @DATA(it_zasrs).
+ 
+
+
+LOOP AT it_zasrs INTO DATA(wa_asrs).
+ 
+  wa_data-txnid = wa_asrs-txnid.
+   wa_data-sku_id = wa_asrs-sku_id.
+   wa_data-qty = wa_asrs-qty .
+   wa_data-lifnr = wa_asrs-lifnr .
+   wa_data-in_out =  wa_asrs-in_out .
+   wa_data-erdat = wa_asrs-erdat .
+   wa_data-batch = wa_asrs-batch .
+   wa_data-barcodes = wa_asrs-barcodes.
+   wa_data-uzeit = wa_asrs-uzeit.
+ 
+  APPEND wa_data TO it_data.
+   CLEAR wa_data.
+ 
+ENDLOOP.
+ 
+DATA: cnt TYPE i.
+ cnt = cnt + 1.
+ 
+wa_fcat-fieldname = 'TXNID'.
+ wa_fcat-seltext_m = 'Transaction ID'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 10.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+wa_fcat-fieldname = 'LIFNR'.
+ wa_fcat-seltext_m = 'Account Number of Supplier'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 20.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+wa_fcat-fieldname = 'SKU_ID'.
+ wa_fcat-seltext_m = 'Transction of sku id'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 40.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+wa_fcat-fieldname = 'QTY'.
+ wa_fcat-seltext_m = 'Quantity'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 20.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+wa_fcat-fieldname = 'BATCH'.
+ wa_fcat-seltext_m = 'Batch Number'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 40.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+wa_fcat-fieldname = 'BARCODES'.
+ wa_fcat-seltext_m = 'Bar code'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 10.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+wa_fcat-fieldname = 'ERDAT'.
+ wa_fcat-seltext_m = 'Record Created On'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 10.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+
+wa_fcat-fieldname = 'UZEIT'.
+ wa_fcat-seltext_m = 'Time'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 10.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+wa_fcat-fieldname = 'IN_OUT'.
+ wa_fcat-seltext_m = 'In out'.
+ wa_fcat-col_pos = 1.
+ wa_fcat-outputlen = 10.
+ APPEND WA_fcat TO IT_fcat.
+ CLEAR wa_fcat.
+ 
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+   EXPORTING
+     i_callback_program      = sy-repid
+ *   i_callback_top_of_page  = 'TOP-OF-PAGE'
+     i_callback_user_command = 'USER_COMMAND'
+     it_fieldcat             = it_fcat
+     i_default               = 'X'
+     i_save                  = 'A'
+   TABLES
+     t_outtab                = it_DATA.

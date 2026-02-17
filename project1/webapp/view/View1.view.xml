@@ -1,0 +1,55 @@
+<mvc:View controllerName="project1.controller.View1"
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns="sap.m">
+    <Page id="page" title="{i18n>title}" class="sapUiResponsiveContentPadding" backgroundDesign="List">
+        <content>
+            <Table id="empTable" 
+                items="{ path: '/zgtempSet', sorter: { path: 'EmpName' } }" 
+                mode="SingleSelectMaster" 
+                selectionChange="onSelectionChange" 
+                growing="true" 
+                growingThreshold="20"
+                alternateRowColors="true"
+                sticky="ColumnHeaders,HeaderToolbar"
+                noDataText="No employees found.">
+                <headerToolbar>
+                    <OverflowToolbar>
+                        <Title text="Employees" level="H2" />
+                        <ToolbarSpacer />
+                        <SearchField width="20%" placeholder="Search Employee" search="onSearch" />
+                        <OverflowToolbarButton icon="sap-icon://sort" text="Sort" press="onSort" />
+                        <OverflowToolbarButton icon="sap-icon://refresh" text="Refresh" press="onRefresh" />
+                        <ToolbarSeparator />
+                        <Button icon="sap-icon://add" text="Create" type="Emphasized" press="onOpenCreateDialog" />
+                        <Button icon="sap-icon://edit" text="Edit" press="onOpenEditDialog" enabled="{viewModel>/hasSelection}" />
+                        <Button icon="sap-icon://delete" text="Delete" press="onDelete" type="Reject" enabled="{viewModel>/hasSelection}" />
+                    </OverflowToolbar>
+                </headerToolbar>
+                <columns>
+                    <Column width="15em">
+                        <Text text="Employee" />
+                    </Column>
+                    <Column minScreenWidth="Tablet" demandPopin="true">
+                        <Text text="Designation" />
+                    </Column>
+                    <Column minScreenWidth="Tablet" demandPopin="true">
+                        <Text text="Department" />
+                    </Column>
+                    <Column hAlign="End">
+                        <Text text="Join Date" />
+                    </Column>
+                </columns>
+                <items>
+                    <ColumnListItem type="Navigation" press="onPress">
+                        <cells>
+                            <ObjectIdentifier title="{EmpName}" text="{EmpId}" />
+                            <Text text="{Designation}" />
+                            <Text text="{Department}" />
+                            <Text text="{JoinDate}" />
+                        </cells>
+                    </ColumnListItem>
+                </items>
+            </Table>
+        </content>
+    </Page>
+</mvc:View>

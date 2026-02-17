@@ -1,0 +1,120 @@
+DATA lt_items TYPE TABLE FOR CREATE i_materialdocumenttp\_materialdocumentitem.
+
+lt_items = VALUE #( (
+  %cid_ref = 'CID_001'
+  %target  = VALUE #(
+    " ---------------------------------------------------------------------
+    " Item 1: Movement 101 (Finished Good Receipt)
+    " ---------------------------------------------------------------------
+    ( %cid                       = 'CID_ITM_101'
+      plant                      = '1300'
+      material                   = 'FBPDDT006760000-00'       " Finished Good Material
+      batch                      = '0000000525'
+      goodsmovementtype          = '101'
+      storagelocation            = '1311'
+      quantityinentryunit        = '10'
+      entryunit                  = 'M'
+      goodsmovementrefdoctype    = 'B'
+      purchaseorder              = '4700000016'
+      purchaseorderitem          = '00010'
+      materialdocumentline       = '000002'
+
+
+      " Control Flags for Item 1
+      %control-plant             = cl_abap_behv=>flag_changed
+      %control-material          = cl_abap_behv=>flag_changed
+      %control-batch             = cl_abap_behv=>flag_changed
+      %control-goodsmovementtype = cl_abap_behv=>flag_changed
+      %control-storagelocation   = cl_abap_behv=>flag_changed
+      %control-quantityinentryunit = cl_abap_behv=>flag_changed
+      %control-entryunit           = cl_abap_behv=>flag_changed
+      %control-goodsmovementrefdoctype = cl_abap_behv=>flag_changed
+      %control-purchaseorder       = cl_abap_behv=>flag_changed
+      %control-purchaseorderitem   = cl_abap_behv=>flag_changed
+      %control-materialdocumentline   = cl_abap_behv=>flag_changed
+    )
+
+    " ---------------------------------------------------------------------
+    " Item 2: Movement 543 (Component Consumption from Special Stock O)
+    " ---------------------------------------------------------------------
+    ( %cid                       = 'CID_ITM_543'
+
+      plant                      = '1300'
+      material                   = 'FBGYDT000065000-00'   " Component Material
+      goodsmovementtype          = '543'
+      storagelocation            = '1301'
+      batch                      = '0000000525'
+      inventoryspecialstocktype  = 'O'                " Special Stock O (Subcontracting)
+      supplier                   = '0010000002'    " Subcontractor Vendor ID
+      quantityinentryunit        = '10'    " Component Consumption Qty
+      entryunit                  = 'M'
+      goodsmovementrefdoctype    = 'B'
+      purchaseorder              = '4700000016'
+      purchaseorderitem          = '00010'
+      materialdocumentparentline = '000002'
+
+
+      " Control Flags for Item 2
+      %control-plant                = cl_abap_behv=>flag_changed
+      %control-material             = cl_abap_behv=>flag_changed
+      %control-goodsmovementtype    = cl_abap_behv=>flag_changed
+      %control-storagelocation      = cl_abap_behv=>flag_changed
+      %control-batch                = cl_abap_behv=>flag_changed
+      %control-inventoryspecialstocktype = cl_abap_behv=>flag_changed
+      %control-supplier             = cl_abap_behv=>flag_changed
+      %control-quantityinentryunit  = cl_abap_behv=>flag_changed
+      %control-entryunit            = cl_abap_behv=>flag_changed
+      %control-goodsmovementrefdoctype = cl_abap_behv=>flag_changed
+      %control-purchaseorder        = cl_abap_behv=>flag_changed
+      %control-purchaseorderitem    = cl_abap_behv=>flag_changed
+      %control-materialdocumentparentline    = cl_abap_behv=>flag_changed
+    )
+  )
+) ).
+
+MODIFY ENTITIES OF i_materialdocumenttp
+    ENTITY materialdocument
+    CREATE FROM VALUE #( ( %cid = 'CID_001'
+    goodsmovementcode          = '01'
+    postingdate                = sy-datum
+    documentdate               = sy-datum
+    %control-goodsmovementcode = cl_abap_behv=>flag_changed
+    %control-postingdate       = cl_abap_behv=>flag_changed
+    %control-documentdate      = cl_abap_behv=>flag_changed
+    ) )
+    ENTITY materialdocument
+    CREATE BY \_materialdocumentitem
+    FROM lt_items
+    MAPPED DATA(ls_create_mapped)
+    FAILED DATA(ls_create_failed)
+    REPORTED DATA(ls_create_reported).
+
+    COMMIT ENTITIES
+      RESPONSE OF i_materialdocumenttp
+      FAILED   DATA(ls_cfailed)
+      REPORTED DATA(ls_creport).
+
+    DATA: lv_final_msg TYPE string.
+    " 1. Handling Item Errors
+    LOOP AT ls_creport-materialdocumentitem INTO DATA(ls_item_err).
+      IF ls_item_err-%msg IS BOUND.
+        DATA(lv_text) = ls_item_err-%msg->if_message~get_text( ).
+        " Append to the single variable (separated by separator if needed)
+        IF lv_final_msg IS INITIAL.
+          lv_final_msg = lv_text.
+        ELSE.
+          lv_final_msg = |{ lv_final_msg }, { lv_text }|.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+    " 2. Handling Header Errors
+    LOOP AT ls_creport-materialdocument INTO DATA(ls_head_err).
+      IF ls_head_err-%msg IS BOUND.
+        lv_text = ls_head_err-%msg->if_message~get_text( ).
+        IF lv_final_msg IS INITIAL.
+          lv_final_msg = lv_text.
+        ELSE.
+          lv_final_msg = |{ lv_final_msg }, { lv_text }|.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.

@@ -1,0 +1,445 @@
+
+*** RAP APPLICATION FOR SALES ORDER LIST WITH CUSTOM FIELDS ***
+*** IMPLEMENTATION STRATEGY: UNMANAGED RAP OR MANAGED WITH ADDITIONAL SAVE ***
+*** CHOSEN STRATEGY: UNMANAGED (Easiest for Mixed Sources) or MANAGED (Logic in Save) ***
+*** We will use UNMANAGED scenario for full control over the Custom Table updates while reading from Join. ***
+
+================================================================================
+STEP 1: CREATE CUSTOM TABLES
+================================================================================
+" 1. Header Custom Table
+@EndUserText.label : 'Sales Order Custom Header Data'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zso_head_cust {
+  key client      : abap.clnt not null;
+  key sales_order : vbeln not null;
+  custom_status   : char10;
+  approval_note   : char255;
+  urgency_level   : char20;
+}
+
+" 2. Item Custom Table
+@EndUserText.label : 'Sales Order Custom Item Data'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zso_item_cust {
+  key client      : abap.clnt not null;
+  key sales_order : vbeln not null;
+  key s_item      : posnr not null;
+  packaging_instr : char100;
+  quality_check   : abap_boolean;
+}
+
+================================================================================
+STEP 3: INTERFACE VIEWS (BASIC VIEWS FOR CUSTOM TABLES)
+================================================================================
+" 1. Basic View for Custom Header
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Basic interface for Custom Header'
+define view entity ZI_SO_HEAD_CUST as select from zso_head_cust {
+    key sales_order as SalesOrder,
+    custom_status   as CustomStatus,
+    approval_note   as ApprovalNote,
+    urgency_level   as UrgencyLevel
+}
+
+" 2. Basic View for Custom Item
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Basic interface for Custom Item'
+define view entity ZI_SO_ITEM_CUST as select from zso_item_cust {
+    key sales_order as SalesOrder,
+    key s_item      as SalesOrderItem,
+    packaging_instr as PackagingInstructions,
+    quality_check   as QualityCheckRequired
+}
+
+================================================================================
+STEP 2 & 5: ROOT VIEW ENTITY & CHILD PARENT RELATION
+================================================================================
+" This view joins Standard I_SalesOrder with Custom Data
+" It functions as the ROOT of our RAP Business Object
+
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Sales Order Root View (Composite)'
+define root view entity ZR_SALESORDER_TP 
+  as select from I_SalesOrder as Standard
+  left outer join ZI_SO_HEAD_CUST as Custom on Standard.SalesOrder = Custom.SalesOrder
+  composition [0..*] of ZR_SALESORDERITEM_TP as _Items
+{
+  key Standard.SalesOrder,
+  
+  /* Standard Fields (Read-Only) */
+  Standard.SalesOrderType,
+  Standard.SalesOrganization,
+  Standard.DistributionChannel,
+  Standard.OrganizationDivision,
+  Standard.SoldToParty,
+  Standard.TotalNetAmount,
+  Standard.TransactionCurrency,
+  Standard.CreationDate,
+  
+  /* Custom Fields (Editable) */
+  Custom.CustomStatus,
+  Custom.ApprovalNote,
+  Custom.UrgencyLevel,
+  
+  /* Associations */
+  _Items
+}
+
+================================================================================
+STEP 2 & 5: CHILD VIEW ENTITY
+================================================================================
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Sales Order Item Child View'
+define view entity ZR_SALESORDERITEM_TP 
+  as select from I_SalesOrderItem as Standard
+  left outer join ZI_SO_ITEM_CUST as Custom 
+    on Standard.SalesOrder = Custom.SalesOrder
+    and Standard.SalesOrderItem = Custom.SalesOrderItem
+  association to parent ZR_SALESORDER_TP as _Header on $projection.SalesOrder = _Header.SalesOrder
+{
+  key Standard.SalesOrder,
+  key Standard.SalesOrderItem,
+  
+  /* Standard Fields */
+  Standard.Material,
+  Standard.OrderQuantity,
+  Standard.OrderQuantityUnit,
+  Standard.NetPriceAmount,
+  
+  /* Custom Fields */
+  Custom.PackagingInstructions,
+  Custom.QualityCheckRequired,
+  
+  /* Associations */
+  _Header
+}
+
+================================================================================
+STEP 4: CONSUMPTION VIEWS (PROJECTION VIEWS)
+================================================================================
+" 1. Header Projection
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Sales Order Projection View'
+@Metadata.allowExtensions: true
+define root view entity ZC_SALESORDER_TP 
+  as projection on ZR_SALESORDER_TP
+{
+  key SalesOrder,
+  SalesOrderType,
+  SoldToParty,
+  TotalNetAmount,
+  TransactionCurrency,
+  CreationDate,
+  
+  @Consumption.valueHelpDefinition: [{ entity: { name: 'I_SalesOrderType', element: 'SalesOrderType' } }]
+  CustomStatus,
+  ApprovalNote,
+  UrgencyLevel,
+  
+  /* Expose Child */
+  _Items : redirected to composition child ZC_SALESORDERITEM_TP
+}
+
+" 2. Item Projection
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Sales Order Item Projection View'
+@Metadata.allowExtensions: true
+define view entity ZC_SALESORDERITEM_TP 
+  as projection on ZR_SALESORDERITEM_TP
+{
+  key SalesOrder,
+  key SalesOrderItem,
+  Material,
+  OrderQuantity,
+  OrderQuantityUnit,
+  
+  PackagingInstructions,
+  QualityCheckRequired,
+  
+  _Header : redirected to parent ZC_SALESORDER_TP
+}
+
+================================================================================
+STEP 6: METADATA EXTENSIONS (UI ANNOTATIONS)
+================================================================================
+" 1. Header MDE
+@Metadata.layer: #CORE
+annotate view ZC_SALESORDER_TP with 
+{
+  @UI.facet: [
+    { id: 'Header', purpose: #STANDARD, type: #IDENTIFICATION_REFERENCE, label: 'Header Info', position: 10 },
+    { id: 'Items', purpose: #STANDARD, type: #LINEITEM_REFERENCE, label: 'Items', position: 20, targetElement: '_Items' }
+  ]
+  
+  @UI.lineItem: [{ position: 10 }]
+  @UI.identification: [{ position: 10 }]
+  SalesOrder;
+  
+  @UI.lineItem: [{ position: 20 }]
+  @UI.identification: [{ position: 20 }]
+  SoldToParty;
+  
+  @UI.lineItem: [{ position: 30 }]
+  @UI.identification: [{ position: 30 }]
+  CustomStatus;
+  
+  @UI.identification: [{ position: 40 }]
+  ApprovalNote;
+  
+  @UI.identification: [{ position: 50 }]
+  UrgencyLevel;
+}
+
+" 2. Item MDE
+    @Metadata.layer: #CORE
+    annotate view ZC_SALESORDERITEM_TP with 
+    {
+    @UI.lineItem: [{ position: 10 }]
+    @UI.identification: [{ position: 10 }]
+    SalesOrderItem;
+    
+    @UI.lineItem: [{ position: 20 }]
+    @UI.identification: [{ position: 20 }]
+    Material;
+    
+    @UI.lineItem: [{ position: 30 }]
+    @UI.identification: [{ position: 30 }]
+    OrderQuantity;
+    
+    @UI.lineItem: [{ position: 40 }]
+    @UI.identification: [{ position: 40 }]
+    PackagingInstructions;
+    
+    @UI.lineItem: [{ position: 50 }]
+    @UI.identification: [{ position: 50 }]
+    QualityCheckRequired;
+    }
+
+================================================================================
+STEP 7: BEHAVIOR DEFINITION (BDEF)
+================================================================================
+unmanaged implementation in class zbp_salesorder unique;
+strict ( 2 );
+
+define behavior for ZR_SALESORDER_TP alias Header
+lock master
+authorization master ( instance )
+{
+  update; 
+  association _Items { create; } 
+  field ( readonly ) SalesOrder, SalesOrderType, SoldToParty, TotalNetAmount;
+  field ( mandatory ) SalesOrder;
+}
+
+define behavior for ZR_SALESORDERITEM_TP alias Item
+lock dependent by _Header
+authorization dependent by _Header
+{
+  update;
+  field ( readonly ) SalesOrder, SalesOrderItem, Material, OrderQuantity;
+  association _Header;
+}
+
+================================================================================
+STEP 7 (Continued): BEHAVIOR IMPLEMENTATION (ABAP CLASS)
+================================================================================
+" ---------------------------------------------------------------------
+" Helper Class for Transactional Buffer
+" ---------------------------------------------------------------------
+CLASS lcl_buffer DEFINITION.
+  PUBLIC SECTION.
+    TYPES: tt_header TYPE SORTED TABLE OF zso_head_cust WITH UNIQUE KEY sales_order,
+           tt_item   TYPE SORTED TABLE OF zso_item_cust WITH UNIQUE KEY sales_order s_item.
+
+    CLASS-DATA: mt_header_buffer TYPE tt_header,
+                mt_item_buffer   TYPE tt_item.
+ENDCLASS.
+
+CLASS lcl_buffer IMPLEMENTATION.
+ENDCLASS.
+
+" ---------------------------------------------------------------------
+" Handler Check Class for Header
+" ---------------------------------------------------------------------
+CLASS lhc_header DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+    METHODS get_instance_authorizations FOR INSTANCE AUTHORIZATION
+      IMPORTING keys REQUEST requested_authorizations FOR header RESULT result.
+    METHODS update FOR MODIFY
+      IMPORTING entities FOR UPDATE header.
+    METHODS read FOR READ
+      IMPORTING keys FOR READ header RESULT result.
+    METHODS lock FOR LOCK
+      IMPORTING keys FOR LOCK header.
+    METHODS rba_items FOR READ
+      IMPORTING keys_rba FOR READ header\_items FULL result_requested RESULT result LINK association_links.
+    METHODS cba_items FOR MODIFY
+      IMPORTING entities_cba FOR CREATE header\_items.
+ENDCLASS.
+
+CLASS lhc_header IMPLEMENTATION.
+  METHOD get_instance_authorizations.
+  ENDMETHOD.
+
+  METHOD update.
+    " Interaction Phase: Update Buffer ONLY (No DB commits)
+    LOOP AT entities INTO DATA(ls_entity).
+      
+      " 1. Retrieve Current State (Priority: Buffer -> DB -> New)
+      READ TABLE lcl_buffer=>mt_header_buffer INTO DATA(ls_state) 
+           WITH TABLE KEY sales_order = ls_entity-SalesOrder.
+           
+      IF sy-subrc <> 0.
+        " Not in buffer, check DB
+        SELECT SINGLE * FROM zso_head_cust 
+          WHERE sales_order = @ls_entity-SalesOrder 
+          INTO @ls_state.
+        
+        IF sy-subrc <> 0.
+          " Not in DB, assume new
+          ls_state-sales_order = ls_entity-SalesOrder.
+        ENDIF.
+      ENDIF.
+
+      " 2. Apply Requested Changes to State
+      IF ls_entity-%control-CustomStatus = if_abap_behv=>mk-on.
+        ls_state-custom_status = ls_entity-CustomStatus.
+      ENDIF.
+      IF ls_entity-%control-ApprovalNote = if_abap_behv=>mk-on.
+        ls_state-approval_note = ls_entity-ApprovalNote.
+      ENDIF.
+      IF ls_entity-%control-UrgencyLevel = if_abap_behv=>mk-on.
+        ls_state-urgency_level = ls_entity-UrgencyLevel.
+      ENDIF.
+
+      " 3. Update Buffer
+      " Check if exists in buffer again (to decide insert vs modify, though sorted key handles uniqueness)
+      READ TABLE lcl_buffer=>mt_header_buffer WITH TABLE KEY sales_order = ls_entity-SalesOrder TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        MODIFY TABLE lcl_buffer=>mt_header_buffer FROM ls_state.
+      ELSE.
+        INSERT ls_state INTO TABLE lcl_buffer=>mt_header_buffer.
+      ENDIF.
+      
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD read.
+  ENDMETHOD.
+  METHOD lock.
+  ENDMETHOD.
+  METHOD rba_items.
+  ENDMETHOD.
+  METHOD cba_items.
+  ENDMETHOD.
+ENDCLASS.
+
+" ---------------------------------------------------------------------
+" Handler Class for Item
+" ---------------------------------------------------------------------
+CLASS lhc_item DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+    METHODS update FOR MODIFY
+      IMPORTING entities FOR UPDATE item.
+    METHODS read FOR READ
+      IMPORTING keys FOR READ item RESULT result.
+    METHODS rba_header FOR READ
+      IMPORTING keys_rba FOR READ item\_header FULL result_requested RESULT result LINK association_links.
+ENDCLASS.
+
+CLASS lhc_item IMPLEMENTATION.
+  METHOD update.
+    " Interaction Phase: Update Buffer ONLY
+    LOOP AT entities INTO DATA(ls_entity).
+      
+      " 1. Retrieve Current State
+      READ TABLE lcl_buffer=>mt_item_buffer INTO DATA(ls_state) 
+           WITH TABLE KEY sales_order = ls_entity-SalesOrder
+                          s_item      = ls_entity-SalesOrderItem.
+                          
+      IF sy-subrc <> 0.
+        SELECT SINGLE * FROM zso_item_cust 
+          WHERE sales_order = @ls_entity-SalesOrder
+            AND s_item      = @ls_entity-SalesOrderItem
+          INTO @ls_state.
+          
+        IF sy-subrc <> 0.
+          ls_state-sales_order = ls_entity-SalesOrder.
+          ls_state-s_item      = ls_entity-SalesOrderItem.
+        ENDIF.
+      ENDIF.
+
+      " 2. Apply Changes
+      IF ls_entity-%control-PackagingInstructions = if_abap_behv=>mk-on.
+        ls_state-packaging_instr = ls_entity-PackagingInstructions.
+      ENDIF.
+      IF ls_entity-%control-QualityCheckRequired = if_abap_behv=>mk-on.
+        ls_state-quality_check = ls_entity-QualityCheckRequired.
+      ENDIF.
+
+      " 3. Update Buffer
+      READ TABLE lcl_buffer=>mt_item_buffer WITH TABLE KEY sales_order = ls_entity-SalesOrder 
+                                                           s_item = ls_entity-SalesOrderItem TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        MODIFY TABLE lcl_buffer=>mt_item_buffer FROM ls_state.
+      ELSE.
+        INSERT ls_state INTO TABLE lcl_buffer=>mt_item_buffer.
+      ENDIF.
+      
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD read.
+  ENDMETHOD.
+  METHOD rba_header.
+  ENDMETHOD.
+ENDCLASS.
+
+" ---------------------------------------------------------------------
+" Saver Class - PERFORMS ACTUAL DB UPDATES
+" ---------------------------------------------------------------------
+CLASS lsc_zr_salesorder_tp DEFINITION INHERITING FROM cl_abap_behavior_saver.
+  PROTECTED SECTION.
+    METHODS finalize REDEFINITION.
+    METHODS check_before_save REDEFINITION.
+    METHODS save REDEFINITION.
+    METHODS cleanup REDEFINITION.
+    METHODS cleanup_finalize REDEFINITION.
+ENDCLASS.
+
+CLASS lsc_zr_salesorder_tp IMPLEMENTATION.
+  METHOD finalize.
+  ENDMETHOD.
+  METHOD check_before_save.
+  ENDMETHOD.
+  
+  METHOD save.
+    " Save Phase: Persist Buffered Data to DB
+    
+    IF lcl_buffer=>mt_header_buffer IS NOT INITIAL.
+      MODIFY zso_head_cust FROM TABLE @lcl_buffer=>mt_header_buffer.
+    ENDIF.
+    
+    IF lcl_buffer=>mt_item_buffer IS NOT INITIAL.
+      MODIFY zso_item_cust FROM TABLE @lcl_buffer=>mt_item_buffer.
+    ENDIF.
+  ENDMETHOD.
+  
+  METHOD cleanup.
+    " Clear buffer on rollback/cleanup
+    CLEAR lcl_buffer=>mt_header_buffer.
+    CLEAR lcl_buffer=>mt_item_buffer.
+  ENDMETHOD.
+  
+  METHOD cleanup_finalize.
+  ENDMETHOD.
+ENDCLASS.
